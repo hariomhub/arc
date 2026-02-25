@@ -147,27 +147,38 @@ const About = () => {
                         <h2>Leadership & Contributors</h2>
                         <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)' }}>Meet the experts guiding our initiatives.</p>
                     </div>
-                    <TeamGrid members={team.filter(m => m.category === 'leadership' || !m.category)} />
+                    <TeamGrid members={team.filter(m => {
+                        try {
+                            const cats = JSON.parse(m.categories || '["leadership"]');
+                            return cats.includes('leadership');
+                        } catch {
+                            return m.category === 'leadership' || !m.category;
+                        }
+                    })} />
 
-                    {team.some(m => m.category === 'industrial') && (
-                        <>
-                            <div style={{ textAlign: 'center', marginBottom: '3rem', marginTop: '5rem' }}>
-                                <h2>Our Industrial AI Experts</h2>
-                                <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)' }}>Specialists in automation, manufacturing, and edge computing.</p>
-                            </div>
-                            <TeamGrid members={team.filter(m => m.category === 'industrial')} />
-                        </>
-                    )}
-
-                    {team.some(m => m.category === 'security') && (
-                        <>
-                            <div style={{ textAlign: 'center', marginBottom: '3rem', marginTop: '5rem' }}>
-                                <h2>Security Team</h2>
-                                <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)' }}>Defending against adversarial threats and ensuring model robustness.</p>
-                            </div>
-                            <TeamGrid members={team.filter(m => m.category === 'security')} />
-                        </>
-                    )}
+                    {team.some(m => {
+                        try {
+                            const cats = JSON.parse(m.categories || '["leadership"]');
+                            return cats.includes('industrial');
+                        } catch {
+                            return m.category === 'industrial';
+                        }
+                    }) && (
+                            <>
+                                <div style={{ textAlign: 'center', marginBottom: '3rem', marginTop: '5rem' }}>
+                                    <h2>Our Industrial AI Experts</h2>
+                                    <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)' }}>Specialists in automation, manufacturing, and edge computing.</p>
+                                </div>
+                                <TeamGrid members={team.filter(m => {
+                                    try {
+                                        const cats = JSON.parse(m.categories || '["leadership"]');
+                                        return cats.includes('industrial');
+                                    } catch {
+                                        return m.category === 'industrial';
+                                    }
+                                })} />
+                            </>
+                        )}
                 </Section>
             )}
             {/* Team Member Modal */}

@@ -41,10 +41,10 @@ router.post('/', authRequired, adminOnly, upload.single('image'), async (req, re
 
     try {
         const [result] = await db.query(
-            'INSERT INTO team_members (name, role, description, linkedin_url, image_url, category) VALUES (?, ?, ?, ?, ?, ?)',
-            [name, role, description || '', linkedin_url || '', imageUrl, category || 'leadership']
+            'INSERT INTO team_members (name, role, description, linkedin_url, image_url, categories) VALUES (?, ?, ?, ?, ?, ?)',
+            [name, role, description || '', linkedin_url || '', imageUrl, req.body.categories || '["leadership"]']
         );
-        res.status(201).json({ id: result.insertId, name, role, description, linkedin_url, image_url: imageUrl, category: category || 'leadership' });
+        res.status(201).json({ id: result.insertId, name, role, description, linkedin_url, image_url: imageUrl, categories: req.body.categories || '["leadership"]' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error creating team member' });
@@ -62,8 +62,8 @@ router.put('/:id', authRequired, adminOnly, upload.single('image'), async (req, 
 
     try {
         await db.query(
-            'UPDATE team_members SET name=?, role=?, description=?, linkedin_url=?, image_url=?, category=? WHERE id=?',
-            [name, role, description || '', linkedin_url || '', imageUrl, category || 'leadership', req.params.id]
+            'UPDATE team_members SET name=?, role=?, description=?, linkedin_url=?, image_url=?, categories=? WHERE id=?',
+            [name, role, description || '', linkedin_url || '', imageUrl, req.body.categories || '["leadership"]', req.params.id]
         );
         res.json({ message: 'Team member updated', image_url: imageUrl });
     } catch (err) {

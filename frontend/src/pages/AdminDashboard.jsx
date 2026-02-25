@@ -15,7 +15,7 @@ const AdminDashboard = () => {
     const [playbooks, setPlaybooks] = useState([]);
 
     const [newEvent, setNewEvent] = useState({ title: '', date: '', location: '', link: '', type: '', category: '', is_featured: '0', teams_link: '', recording_url: '' });
-    const [newTeam, setNewTeam] = useState({ name: '', role: '', description: '', linkedin_url: '', image: null, category: 'leadership' });
+    const [newTeam, setNewTeam] = useState({ name: '', role: '', description: '', linkedin_url: '', image: null, categories: ['leadership'] });
     const [newPlaybook, setNewPlaybook] = useState({ title: '', brief: '', framework: 'EU AI Act', category: 'Guide', file: null });
 
     // Admin Auth Guard — wait for auth to finish loading before redirecting
@@ -113,11 +113,13 @@ const AdminDashboard = () => {
 
     const handleCreateTeam = async (e) => {
         e.preventDefault();
+        if (newTeam.categories.length === 0) return alert('Please select at least one team category.');
+
         const formData = new FormData();
         formData.append('name', newTeam.name);
         formData.append('role', newTeam.role);
         formData.append('description', newTeam.description);
-        formData.append('category', newTeam.category);
+        formData.append('categories', JSON.stringify(newTeam.categories));
         formData.append('linkedin_url', newTeam.linkedin_url);
         if (newTeam.image) formData.append('image', newTeam.image);
 
@@ -127,7 +129,7 @@ const AdminDashboard = () => {
                 headers: { 'Authorization': `Bearer ${token}` }, // FormData, so no Content-Type
                 body: formData
             });
-            setNewTeam({ name: '', role: '', description: '', linkedin_url: '', image: null, category: 'leadership' });
+            setNewTeam({ name: '', role: '', description: '', linkedin_url: '', image: null, categories: ['leadership'] });
             fetchData();
         } catch (err) { console.error(err); }
     };
@@ -396,11 +398,31 @@ const AdminDashboard = () => {
                         <form onSubmit={handleCreateTeam} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                             <input type="text" placeholder="Name *" required value={newTeam.name} onChange={e => setNewTeam({ ...newTeam, name: e.target.value })} style={inputStyle} />
                             <input type="text" placeholder="Role (e.g. Chief Risk Officer) *" required value={newTeam.role} onChange={e => setNewTeam({ ...newTeam, role: e.target.value })} style={inputStyle} />
-                            <select value={newTeam.category} onChange={e => setNewTeam({ ...newTeam, category: e.target.value })} style={{ ...inputStyle, padding: '10px' }}>
-                                <option value="leadership">Leadership & Contributors</option>
-                                <option value="industrial">Our Industrial AI Experts</option>
-                                <option value="security">Security Team</option>
-                            </select>
+
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', fontWeight: '600' }}>Assign to Sections *</label>
+                                <div style={{ display: 'flex', gap: '15px', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', cursor: 'pointer' }}>
+                                        <input type="checkbox" checked={newTeam.categories.includes('leadership')}
+                                            onChange={(e) => {
+                                                if (e.target.checked) setNewTeam({ ...newTeam, categories: [...newTeam.categories, 'leadership'] });
+                                                else setNewTeam({ ...newTeam, categories: newTeam.categories.filter(c => c !== 'leadership') });
+                                            }}
+                                        />
+                                        Leadership & Contributors
+                                    </label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', cursor: 'pointer' }}>
+                                        <input type="checkbox" checked={newTeam.categories.includes('industrial')}
+                                            onChange={(e) => {
+                                                if (e.target.checked) setNewTeam({ ...newTeam, categories: [...newTeam.categories, 'industrial'] });
+                                                else setNewTeam({ ...newTeam, categories: newTeam.categories.filter(c => c !== 'industrial') });
+                                            }}
+                                        />
+                                        Our Industrial AI Experts
+                                    </label>
+                                </div>
+                            </div>
+
                             <textarea placeholder="Detailed Description / Bio" rows={3} value={newTeam.description} onChange={e => setNewTeam({ ...newTeam, description: e.target.value })} style={{ ...inputStyle, resize: 'vertical' }} />
                             <input type="url" placeholder="LinkedIn URL (Optional)" value={newTeam.linkedin_url} onChange={e => setNewTeam({ ...newTeam, linkedin_url: e.target.value })} style={inputStyle} />
                             <div>
@@ -423,9 +445,24 @@ const AdminDashboard = () => {
                                             <div>
                                                 <h4 style={{ margin: '0 0 4px 0', fontSize: '1.05rem' }}>{member.name}</h4>
                                                 <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{member.role}</p>
-                                                <span style={{ fontSize: '0.75rem', backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '4px', color: '#475569', display: 'inline-block', marginTop: '4px' }}>
-                                                    {member.category === 'industrial' ? 'Industrial' : member.category === 'security' ? 'Security' : 'Leadership'}
-                                                </span>
+                                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
+                                                    {(() => {
+                                                        try {
+                                                            const cats = JSON.parse(member.categories || '["leadership"]');
+                                                            return cats.map((cat, idx) => (
+                                                                <span key={idx} style={{ fontSize: '0.75rem', backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '4px', color: '#475569' }}>
+                                                                    {cat === 'industrial' ? 'Industrial' : 'Leadership'}
+                                                                </span>
+                                                            ));
+                                                        } catch {
+                                                            return (
+                                                                <span style={{ fontSize: '0.75rem', backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '4px', color: '#475569' }}>
+                                                                    {member.category}
+                                                                </span>
+                                                            );
+                                                        }
+                                                    })()}
+                                                </div>
                                             </div>
                                         </div>
                                         <button onClick={() => handleDeleteTeam(member.id)} style={deleteBtnStyle}><Trash2 size={16} /></button>

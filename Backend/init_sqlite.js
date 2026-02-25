@@ -39,6 +39,11 @@ async function setup() {
         pan TEXT,
         incorporation_number TEXT,
         phone TEXT,
+        bio TEXT,
+        linkedin_url TEXT,
+        twitter_url TEXT,
+        website_url TEXT,
+        profile_image TEXT,
         is_banned INTEGER DEFAULT 0,
         reset_token TEXT,
         reset_token_expires DATETIME,
@@ -74,7 +79,7 @@ async function setup() {
       )
     `);
 
-    // Events Table [NEW]
+    // Events Table
     await db.exec(`
       CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,11 +89,14 @@ async function setup() {
         link TEXT,
         type TEXT DEFAULT 'upcoming' CHECK(type IN ('upcoming', 'past')),
         category TEXT DEFAULT 'webinar',
+        is_featured INTEGER DEFAULT 0,
+        teams_link TEXT,
+        recording_url TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Team Table [NEW]
+    // Team Table
     await db.exec(`
       CREATE TABLE IF NOT EXISTS team_members (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,7 +105,7 @@ async function setup() {
         description TEXT,
         image_url TEXT,
         linkedin_url TEXT,
-        category TEXT DEFAULT 'leadership' CHECK(category IN ('leadership', 'industrial', 'security')),
+        categories TEXT DEFAULT '["leadership"]',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -117,7 +125,7 @@ async function setup() {
       )
     `);
 
-    // Answers/Responses Table (Modified: Match backend routes)
+    // Answers/Responses Table 
     await db.exec(`
       CREATE TABLE IF NOT EXISTS answers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,6 +136,21 @@ async function setup() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Playbooks Table 
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS playbooks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        brief TEXT,
+        framework TEXT NOT NULL,
+        category TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        file_type TEXT NOT NULL,
+        download_count INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -188,16 +211,35 @@ async function setup() {
     await db.run(`INSERT INTO events (title, date, location, link, type, category) VALUES ('Annual AI Safety Conference 2025', 'December 10th, 2025', 'Delhi', '#', 'past', 'conference')`);
 
     // 5. Seed Team Members
-    await db.run(`INSERT INTO team_members (name, role, linkedin_url) VALUES ('Akarsh Singh A.', 'Chief Policy Officer', 'https://linkedin.com')`);
-    await db.run(`INSERT INTO team_members (name, role, linkedin_url) VALUES ('Elena Rodriguez', 'Head of AI Research', 'https://linkedin.com')`);
-    await db.run(`INSERT INTO team_members (name, role, linkedin_url) VALUES ('Dr. Pawan Chawla', 'Senior Security Advisor', 'https://linkedin.com')`);
-    await db.run(`INSERT INTO team_members (name, role, linkedin_url) VALUES ('Sarah Chen', 'Director of Ethics', 'https://linkedin.com')`);
+    await db.run(`INSERT INTO team_members (name, role, categories, linkedin_url) VALUES ('Akarsh Singh A.', 'Chief Policy Officer', '["leadership"]', 'https://linkedin.com')`);
+    await db.run(`INSERT INTO team_members (name, role, categories, linkedin_url) VALUES ('Elena Rodriguez', 'Head of AI Research', '["leadership"]', 'https://linkedin.com')`);
+    await db.run(`INSERT INTO team_members (name, role, categories, linkedin_url) VALUES ('Dr. Pawan Chawla', 'Senior Security Advisor', '["leadership", "industrial"]', 'https://linkedin.com')`);
+    await db.run(`INSERT INTO team_members (name, role, categories, linkedin_url) VALUES ('Sarah Chen', 'Director of Ethics', '["industrial"]', 'https://linkedin.com')`);
 
     // 6. Seed QnA
     await db.run(`INSERT INTO questions (id, title, details, status, user_id, category_id) VALUES (1, 'How do we comply with the new EU AI Act?', 'I am looking for specific checklist templates.', 'answered', 3, 1)`);
     await db.run(`INSERT INTO questions (id, title, details, status, user_id, category_id) VALUES (2, 'What are the best open-source tools for red-teaming LLMs?', 'Please share any python libraries.', 'open', 3, 2)`);
 
     await db.run(`INSERT INTO answers (question_id, user_id, content, is_official) VALUES (1, 1, 'We recommend starting with a gap analysis using our provided assessment framework under Resources.', 1)`);
+
+    console.log('Seeding QnA complete');
+
+    // 7. Seed Playbooks
+    const playbooks = [
+      { title: 'AI Risk Management Guide', brief: 'A comprehensive guide to identifying and mitigating AI risks.', framework: 'NIST AI RMF', category: 'Guide', type: 'PDF' },
+      { title: 'EU AI Act Compliance Checklist', brief: 'Step-by-step checklist to ensure compliance with the latest EU AI Act regulations.', framework: 'EU AI Act', category: 'Checklist', type: 'PDF' },
+      { title: 'ISO 42001 Implementation Template', brief: 'Ready-to-use template for drafting your AI management system policies.', framework: 'ISO 42001', category: 'Template', type: 'Word' },
+      { title: 'GDPR & AI Assessment Tool', brief: 'Excel tool to assess the impact of AI systems on data privacy and GDPR compliance.', framework: 'GDPR', category: 'Checklist', type: 'Excel' },
+      { title: 'General AI Governance Policy', brief: 'A broad governance policy document suitable for organizations adopting AI.', framework: 'General', category: 'Policy', type: 'Word' },
+      { title: 'NIST AI RMF Self-Assessment', brief: 'Evaluate your organization’s maturity against the NIST framework.', framework: 'NIST AI RMF', category: 'Template', type: 'Excel' }
+    ];
+
+    for (const pb of playbooks) {
+      await db.run(
+        'INSERT INTO playbooks (title, brief, framework, category, file_path, file_type) VALUES (?, ?, ?, ?, ?, ?)',
+        [pb.title, pb.brief, pb.framework, pb.category, '/uploads/sample-playbook.pdf', pb.type]
+      );
+    }
 
     console.log('Database initialization and seeding complete.');
 

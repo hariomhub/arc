@@ -40,3 +40,9 @@ desktop.ini
 # ===========================
 *.pem
 coverage/
+
+# ===========================
+# Database
+# ===========================
+database.sqlite
+database.sqlite-journal

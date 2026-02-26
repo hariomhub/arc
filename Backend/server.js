@@ -31,12 +31,12 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"],   // required for Vite build
-            styleSrc: ["'self'", "'unsafe-inline'"],
-            imgSrc: ["'self'", "data:", "blob:", "https://randomuser.me"],
-            mediaSrc: ["'self'", "blob:"],
-            connectSrc: ["'self'"],
-            fontSrc: ["'self'", "data:"],
+            scriptSrc: ["'self'", "'unsafe-inline'"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+            imgSrc: ["'self'", "data:", "blob:", "https://randomuser.me", "https://airiskcouncilstorage.blob.core.windows.net"],
+            mediaSrc: ["'self'", "blob:", "https://videos.pexels.com", "https://airiskcouncilstorage.blob.core.windows.net"],
+            connectSrc: ["'self'", "https://airiskcouncilstorage.blob.core.windows.net"],
             objectSrc: ["'none'"],
             ...(isProd && { upgradeInsecureRequests: [] })
         }

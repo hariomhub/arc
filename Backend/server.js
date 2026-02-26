@@ -34,8 +34,9 @@ app.use(helmet({
             scriptSrc: ["'self'", "'unsafe-inline'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
-            imgSrc: ["'self'", "data:", "blob:", "https://randomuser.me", "https://airiskcouncilstorage.blob.core.windows.net"],
-            mediaSrc: ["'self'", "blob:", "https://videos.pexels.com", "https://airiskcouncilstorage.blob.core.windows.net"],
+            imgSrc: ["'self'", "data:", "blob:", "https://randomuser.me", "https://img.youtube.com", "https://airiskcouncilstorage.blob.core.windows.net"],
+            mediaSrc: ["'self'", "blob:", "https://airiskcouncilstorage.blob.core.windows.net"],
+            frameSrc: ["https://www.youtube.com", "https://youtube.com"],
             connectSrc: ["'self'", "https://airiskcouncilstorage.blob.core.windows.net"],
             objectSrc: ["'none'"],
             ...(isProd && { upgradeInsecureRequests: [] })

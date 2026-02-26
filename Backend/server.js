@@ -63,7 +63,12 @@ const limiter = rateLimit({
     max: 1000,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: 'Too many requests, please try again later.' } // MUST be JSON object
+    message: { error: 'Too many requests, please try again later.' },
+    keyGenerator: (req) => {
+        const ip = req.ip || req.socket.remoteAddress || '';
+        // Azure proxy sometimes sends IP:port — strip the port
+        return ip.replace(/:\d+$/, '').replace(/^::ffff:/, '');
+    }
 });
 app.use('/api', limiter);
 

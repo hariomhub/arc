@@ -131,6 +131,15 @@ app.use((err, req, res, next) => {
     });
 });
 
+// ─── Auto-migrate: add missing columns on existing databases ─────────────────
+const db = require('./Db');
+(async () => {
+    try {
+        await db.query('ALTER TABLE team_members ADD COLUMN blob_name TEXT');
+        console.log('[Migration] Added blob_name column to team_members');
+    } catch (_) { /* column already exists — safe to ignore */ }
+})();
+
 // ─── Start ───────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

@@ -2,6 +2,7 @@ const router = require('express').Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { Readable } = require('stream');
 const db = require('../Db');
 const { authRequired, authOptional, adminOnly } = require('../middleware/auth');
 const { uploadToBlob, deleteFromBlob, blobNameFromUrl, USE_BLOB } = require('../blobStorage');
@@ -113,6 +114,59 @@ router.get('/videos', async (req, res) => {
     } catch (err) {
         console.error('[resources/videos]', err);
         res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// ─── GET /api/resources/pending — pending resources for admin review ─────────
+router.get('/pending', authRequired, adminOnly, async (req, res) => {
+    try {
+        const [rows] = await db.query(
+            "SELECT * FROM resources WHERE status = 'pending' ORDER BY created_at DESC",
+            []
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error('[resources/pending]', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// ─── GET /api/resources/:id/stream — proxy blob video to avoid CORS on range requests ──
+router.get('/:id/stream', async (req, res) => {
+    try {
+        const [rows] = await db.query('SELECT file_path FROM resources WHERE id = ?', [req.params.id]);
+        if (!rows.length || !rows[0].file_path) return res.status(404).json({ error: 'Not found' });
+
+        const fileUrl = rows[0].file_path;
+
+        // Only proxy blob URLs — local files served directly
+        if (!fileUrl.startsWith('http')) {
+            return res.redirect(fileUrl);
+        }
+
+        const rangeHeader = req.headers['range'];
+        const fetchHeaders = {};
+        if (rangeHeader) fetchHeaders['Range'] = rangeHeader;
+
+        const upstream = await fetch(fileUrl, { headers: fetchHeaders });
+
+        if (!upstream.ok && upstream.status !== 206) {
+            return res.status(upstream.status).end();
+        }
+
+        // Forward relevant headers
+        const forward = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'];
+        forward.forEach(h => {
+            const val = upstream.headers.get(h);
+            if (val) res.setHeader(h, val);
+        });
+
+        res.status(upstream.status);
+        Readable.fromWeb(upstream.body).pipe(res);
+
+    } catch (err) {
+        console.error('[resources/stream]', err);
+        res.status(500).json({ error: 'Stream error' });
     }
 });
 
@@ -241,6 +295,28 @@ router.delete('/:id', authRequired, adminOnly, async (req, res) => {
         res.json({ message: 'Resource deleted' });
     } catch (err) {
         console.error('[resources/delete]', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// ─── PATCH /api/resources/:id/approve ────────────────────────────────────────
+router.patch('/:id/approve', authRequired, adminOnly, async (req, res) => {
+    try {
+        await db.query("UPDATE resources SET status = 'approved' WHERE id = ?", [req.params.id]);
+        res.json({ message: 'Resource approved' });
+    } catch (err) {
+        console.error('[resources/approve]', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// ─── PATCH /api/resources/:id/reject ─────────────────────────────────────────
+router.patch('/:id/reject', authRequired, adminOnly, async (req, res) => {
+    try {
+        await db.query("UPDATE resources SET status = 'rejected' WHERE id = ?", [req.params.id]);
+        res.json({ message: 'Resource rejected' });
+    } catch (err) {
+        console.error('[resources/reject]', err);
         res.status(500).json({ error: 'Server error' });
     }
 });

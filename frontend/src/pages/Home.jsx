@@ -204,7 +204,7 @@ const Home = () => {
                                                 title={videos[playingVideoIdx].title}
                                             />
                                         ) : (
-                                            <video src={videos[playingVideoIdx].file_path} controls autoPlay
+                                            <video src={`/api/resources/${videos[playingVideoIdx].id}/stream`} controls autoPlay
                                                 style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0, background: '#000' }}
                                             />
                                         )}

@@ -4,214 +4,252 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../Db');
 const { authRequired, authOptional, adminOnly } = require('../middleware/auth');
+const { uploadToBlob, deleteFromBlob, blobNameFromUrl, USE_BLOB } = require('../blobStorage');
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const dir = path.join(__dirname, '../uploads');
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        cb(null, dir);
-    },
-    filename: (req, file, cb) => {
-        cb(null, `${Date.now()}-${file.originalname.replace(/\s+/g, '-')}`);
-    }
-});
+// ─── Multer setup ────────────────────────────────────────────────────────────
+// Use memory storage when Blob is configured, disk otherwise
+const storage = USE_BLOB
+    ? multer.memoryStorage()
+    : multer.diskStorage({
+        destination: (req, file, cb) => {
+            const uploadsPath = process.env.UPLOADS_PATH || path.join(__dirname, '..', 'uploads');
+            const dir = path.join(uploadsPath, 'resources');
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            cb(null, dir);
+        },
+        filename: (req, file, cb) => {
+            const ext = path.extname(file.originalname).toLowerCase();
+            cb(null, `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
+        }
+    });
+
+const ALLOWED_TYPES = {
+    // Documents
+    '.pdf': 'application/pdf',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.doc': 'application/msword',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    // Videos
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mov': 'video/quicktime',
+    '.avi': 'video/x-msvideo',
+    // Images
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+};
 
 const upload = multer({
     storage,
-    limits: { fileSize: 20 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-        const allowed = ['.pdf', '.docx', '.xlsx'];
         const ext = path.extname(file.originalname).toLowerCase();
-        allowed.includes(ext) ? cb(null, true) : cb(new Error('Only PDF, DOCX, XLSX allowed'));
-    }
+        if (ALLOWED_TYPES[ext]) {
+            cb(null, true);
+        } else {
+            cb(new Error(`File type ${ext} is not allowed`), false);
+        }
+    },
+    limits: { fileSize: 500 * 1024 * 1024 } // 500MB for videos
 });
 
-// Helper: does this user have member-or-above access?
-// Roles: 'user' (public only), 'member' (all), 'admin' (all + manage)
-const hasMemberAccess = (user) => user && (user.role === 'member' || user.role === 'admin');
+// ─── Helper: build file_path for local disk ──────────────────────────────────
+function localFilePath(file) {
+    const uploadsPath = process.env.UPLOADS_PATH || path.join(__dirname, '..', 'uploads');
+    // Make path relative to uploads root for serving
+    return `/uploads/resources/${file.filename}`;
+}
 
-// GET /api/resources
+// ─── GET /api/resources — list resources ─────────────────────────────────────
 router.get('/', authOptional, async (req, res) => {
     try {
-        let query = 'SELECT * FROM resources WHERE status = "approved"';
+        const { type, access } = req.query;
+        let sql = 'SELECT * FROM resources WHERE 1=1';
         const params = [];
 
-        if (req.query.type) { query += ' AND type = ?'; params.push(req.query.type); }
+        // Non-members only see public resources
+        const canSeeMembers = req.user?.role === 'admin' ||
+            req.user?.role === 'executive' ||
+            req.user?.role === 'member';
 
-        query += ' ORDER BY created_at DESC';
-        const [rows] = await db.query(query, params);
+        if (!canSeeMembers) {
+            sql += ' AND access_level = ?';
+            params.push('public');
+        }
+
+        if (type) { sql += ' AND type = ?'; params.push(type); }
+
+        // Admin sees all statuses, others only approved
+        if (req.user?.role !== 'admin' && req.user?.role !== 'executive') {
+            sql += ' AND (status = ? OR status IS NULL)';
+            params.push('approved');
+        }
+
+        sql += ' ORDER BY created_at DESC';
+
+        const [rows] = await db.query(sql, params);
         res.json(rows);
     } catch (err) {
-        console.error(err);
+        console.error('[resources/list]', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
 
-// GET /api/resources/pending — admin only
-router.get('/pending', authRequired, adminOnly, async (req, res) => {
+// ─── GET /api/resources/videos — only video type for homepage carousel ────────
+router.get('/videos', async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM resources WHERE status = "pending" ORDER BY created_at DESC');
+        const [rows] = await db.query(
+            `SELECT id, title, summary, file_path, source_url, thumbnail_url, created_at
+             FROM resources
+             WHERE type = 'video' AND access_level = 'public' AND (status = 'approved' OR status IS NULL)
+             ORDER BY created_at DESC`,
+            []
+        );
         res.json(rows);
     } catch (err) {
-        console.error(err);
+        console.error('[resources/videos]', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
 
-// GET /api/resources/:id
-router.get('/:id', authOptional, async (req, res) => {
-    try {
-        const [rows] = await db.query('SELECT * FROM resources WHERE id = ?', [req.params.id]);
-        if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-        const resource = rows[0];
-
-        // Hide pending from unprivileged requests
-        if (resource.status !== 'approved' && (!req.user || (req.user.role !== 'admin' && req.user.role !== 'executive'))) {
-            return res.status(403).json({ error: 'Resource not approved yet' });
-        }
-
-        // Block 'user' role and unauthenticated from member resources
-        if (resource.access === 'Members Only' && !hasMemberAccess(req.user)) {
-            return res.status(403).json({ error: 'Member access required' });
-        }
-        res.json(resource);
-    } catch (err) {
-        res.status(500).json({ error: 'Server error' });
-    }
-});
-
-// POST /api/resources/:id/download — increment download count
-router.post('/:id/download', authOptional, async (req, res) => {
-    try {
-        const [rows] = await db.query('SELECT id, access FROM resources WHERE id = ?', [req.params.id]);
-        if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-        if (rows[0].access === 'Members Only' && !hasMemberAccess(req.user)) {
-            return res.status(403).json({ error: 'Member access required' });
-        }
-        await db.query('UPDATE resources SET download_count = COALESCE(download_count, 0) + 1 WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: 'Server error' });
-    }
-});
-
-// POST /api/resources — allowed for admin, exec, university, company
+// ─── POST /api/resources — upload new resource ───────────────────────────────
 router.post('/', authRequired, upload.single('file'), async (req, res) => {
-    const userRole = req.user.role;
-    if (!['admin', 'executive', 'university', 'company'].includes(userRole)) {
-        return res.status(403).json({ error: 'Insufficient permissions' });
-    }
-
-    const { title, summary, description, source_url, external_link, type, access_level, access, category_slug } = req.body;
-    if (!title) return res.status(400).json({ error: 'Title required' });
-
-    let resolvedType = type || 'Guide';
-    let status = 'approved';
-
-    if (userRole === 'university') {
-        resolvedType = 'whitepaper';
-        status = 'pending';
-    } else if (userRole === 'company') {
-        resolvedType = 'product';
-        status = 'pending';
-    } else if (userRole === 'admin' || userRole === 'executive') {
-        status = 'approved';
-    }
-
-    const file_path = req.file ? `/uploads/${req.file.filename}` : null;
     try {
-        const desc = summary || description || null;
-        const link = source_url || external_link || null;
-        const acc = access_level || access || 'Public';
+        const { title, summary, type, access_level, source_url, category_slug, thumbnail_url } = req.body;
+        if (!title || !summary) return res.status(400).json({ error: 'Title and summary are required' });
 
-        let catId = null;
-        if (category_slug) {
-            const [cats] = await db.query('SELECT id FROM categories WHERE name = ?', [category_slug]);
-            if (cats.length > 0) catId = cats[0].id;
+        const isAdmin = req.user.role === 'admin' || req.user.role === 'executive';
+        const status = isAdmin ? 'approved' : 'pending';
+
+        let filePath = null;
+        let blobName = null;
+
+        if (req.file) {
+            if (USE_BLOB) {
+                const result = await uploadToBlob(
+                    req.file.buffer,
+                    req.file.originalname,
+                    req.file.mimetype,
+                    'resources'
+                );
+                filePath = result.url;
+                blobName = result.blobName;
+            } else {
+                filePath = localFilePath(req.file);
+            }
         }
 
         const [result] = await db.query(
-            `INSERT INTO resources (title, description, external_link, file_path, type, access, category_id, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [title, desc, link, file_path, resolvedType, acc, catId, status]
+            `INSERT INTO resources
+             (title, summary, type, access_level, source_url, category_slug, file_path, blob_name, thumbnail_url, status, user_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [title, summary, type || 'article', access_level || 'public',
+             source_url || null, category_slug || null,
+             filePath, blobName || null,
+             thumbnail_url || null, status, req.user.id]
         );
-        const [rows] = await db.query('SELECT * FROM resources WHERE id = ?', [result.insertId]);
-        res.status(201).json(rows[0]);
+
+        res.status(201).json({
+            id: result.insertId, title, summary, type: type || 'article',
+            access_level: access_level || 'public', file_path: filePath,
+            source_url: source_url || null, status
+        });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error' });
+        console.error('[resources/create]', err);
+        res.status(500).json({ error: err.message || 'Server error' });
     }
 });
 
-// PUT /api/resources/:id — admin only
+// ─── PUT /api/resources/:id — update resource (admin only) ───────────────────
 router.put('/:id', authRequired, adminOnly, upload.single('file'), async (req, res) => {
-    const { title, summary, description, source_url, external_link, type, access_level, access, category_slug } = req.body;
-    if (!title) return res.status(400).json({ error: 'Title required' });
-
     try {
-        const desc = summary || description || null;
-        const link = source_url || external_link || null;
-        const acc = access_level || access || 'Public';
+        const [rows] = await db.query('SELECT * FROM resources WHERE id = ?', [req.params.id]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Resource not found' });
+        const existing = rows[0];
 
-        // Resolve Category String to ID
-        let catId = null;
-        if (category_slug) {
-            const [cats] = await db.query('SELECT id FROM categories WHERE name = ?', [category_slug]);
-            if (cats.length > 0) catId = cats[0].id;
-        }
+        const { title, summary, type, access_level, source_url, category_slug, thumbnail_url } = req.body;
+
+        let filePath = existing.file_path;
+        let blobName = existing.blob_name;
 
         if (req.file) {
-            const file_path = `/uploads/${req.file.filename}`;
-            await db.query(
-                `UPDATE resources SET title=?, description=?, external_link=?, file_path=?, type=?, access=?, category_id=? WHERE id=?`,
-                [title, desc, link, file_path, type || 'Guide', acc, catId, req.params.id]
-            );
-        } else {
-            await db.query(
-                `UPDATE resources SET title=?, description=?, external_link=?, type=?, access=?, category_id=? WHERE id=?`,
-                [title, desc, link, type || 'Guide', acc, catId, req.params.id]
-            );
+            // Delete old blob if exists
+            if (existing.blob_name) await deleteFromBlob(existing.blob_name);
+
+            if (USE_BLOB) {
+                const result = await uploadToBlob(
+                    req.file.buffer,
+                    req.file.originalname,
+                    req.file.mimetype,
+                    'resources'
+                );
+                filePath = result.url;
+                blobName = result.blobName;
+            } else {
+                // Delete old local file
+                if (existing.file_path && !existing.file_path.startsWith('http')) {
+                    const oldPath = path.join(
+                        process.env.UPLOADS_PATH || path.join(__dirname, '..', 'uploads'),
+                        existing.file_path.replace('/uploads/', '')
+                    );
+                    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+                }
+                filePath = localFilePath(req.file);
+                blobName = null;
+            }
         }
 
-        const [rows] = await db.query('SELECT * FROM resources WHERE id = ?', [req.params.id]);
-        res.json(rows[0]);
+        await db.query(
+            `UPDATE resources SET title=?, summary=?, type=?, access_level=?,
+             source_url=?, category_slug=?, file_path=?, blob_name=?, thumbnail_url=?
+             WHERE id=?`,
+            [title, summary, type, access_level,
+             source_url || null, category_slug || null,
+             filePath, blobName || null,
+             thumbnail_url || null, req.params.id]
+        );
+
+        const [updated] = await db.query('SELECT * FROM resources WHERE id = ?', [req.params.id]);
+        res.json(updated[0]);
     } catch (err) {
-        console.error(err);
+        console.error('[resources/update]', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
 
-// DELETE /api/resources/:id — admin only
+// ─── DELETE /api/resources/:id ───────────────────────────────────────────────
 router.delete('/:id', authRequired, adminOnly, async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT file_path FROM resources WHERE id = ?', [req.params.id]);
-        if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-        if (rows[0].file_path) {
-            const fp = path.join(__dirname, '..', rows[0].file_path);
-            if (fs.existsSync(fp)) fs.unlinkSync(fp);
+        const [rows] = await db.query('SELECT * FROM resources WHERE id = ?', [req.params.id]);
+        if (rows.length > 0) {
+            const r = rows[0];
+            if (r.blob_name) {
+                await deleteFromBlob(r.blob_name);
+            } else if (r.file_path && !r.file_path.startsWith('http')) {
+                const localPath = path.join(
+                    process.env.UPLOADS_PATH || path.join(__dirname, '..', 'uploads'),
+                    r.file_path.replace('/uploads/', '')
+                );
+                if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+            }
         }
         await db.query('DELETE FROM resources WHERE id = ?', [req.params.id]);
-        res.json({ message: 'Deleted' });
+        res.json({ message: 'Resource deleted' });
     } catch (err) {
+        console.error('[resources/delete]', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
 
-// PATCH /api/resources/:id/approve — admin only
-router.patch('/:id/approve', authRequired, adminOnly, async (req, res) => {
+// ─── POST /api/resources/:id/download — increment download count ─────────────
+router.post('/:id/download', authOptional, async (req, res) => {
     try {
-        await db.query('UPDATE resources SET status = "approved" WHERE id = ?', [req.params.id]);
-        res.json({ message: 'Resource approved successfully' });
-    } catch (err) {
-        res.status(500).json({ error: 'Server error' });
-    }
-});
-
-// PATCH /api/resources/:id/reject — admin only
-router.patch('/:id/reject', authRequired, adminOnly, async (req, res) => {
-    try {
-        await db.query('UPDATE resources SET status = "rejected" WHERE id = ?', [req.params.id]);
-        res.json({ message: 'Resource rejected' });
+        await db.query('UPDATE resources SET download_count = download_count + 1 WHERE id = ?', [req.params.id]);
+        res.json({ ok: true });
     } catch (err) {
         res.status(500).json({ error: 'Server error' });
     }

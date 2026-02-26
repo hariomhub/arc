@@ -3,17 +3,21 @@ import { useNavigate } from 'react-router-dom';
 import {
     Shield, UserPlus, Users, Trash2, Edit2,
     CheckCircle, AlertCircle, Eye, EyeOff,
-    Crown, User, ChevronDown, Search, RefreshCw,
-    Ban, MoreVertical, X
+    Crown, User, Search, RefreshCw,
+    Ban, X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const API = 'http://localhost:5000/api';
+// NOTE: All user management API calls go through /api/admin/users — not /api/users
+const ADMIN_USERS_API = '/api/admin/users';
 
 const ROLE_CONFIG = {
-    admin:  { label: 'Admin',  bg: '#7C3AED', light: '#F5F3FF', text: '#5B21B6', border: '#DDD6FE' },
-    member: { label: 'Member', bg: '#003366', light: '#EFF6FF', text: '#1E40AF', border: '#BFDBFE' },
-    user:   { label: 'User',   bg: '#475569', light: '#F8FAFC', text: '#475569', border: '#E2E8F0' },
+    admin:      { label: 'Admin',      bg: '#7C3AED', light: '#F5F3FF', text: '#5B21B6', border: '#DDD6FE' },
+    executive:  { label: 'Executive',  bg: '#7C3AED', light: '#F5F3FF', text: '#5B21B6', border: '#DDD6FE' },
+    member:     { label: 'Member',     bg: '#003366', light: '#EFF6FF', text: '#1E40AF', border: '#BFDBFE' },
+    user:       { label: 'User',       bg: '#475569', light: '#F8FAFC', text: '#475569', border: '#E2E8F0' },
+    university: { label: 'University', bg: '#0369A1', light: '#EFF6FF', text: '#0369A1', border: '#BAE6FD' },
+    company:    { label: 'Company',    bg: '#059669', light: '#ECFDF5', text: '#047857', border: '#A7F3D0' },
 };
 
 const Avatar = ({ name, role, size = 36 }) => {
@@ -65,7 +69,7 @@ const Toast = ({ toast }) => {
 
 // ── Create User Form ──────────────────────────────────────────────────────────
 const CreateUserTab = ({ token, onCreated }) => {
-    const [form, setForm] = useState({ name: '', email: '', password: '', role: 'user' });
+    const [form, setForm] = useState({ name: '', email: '', password: '', role: 'user', organization_name: '', phone: '', gst: '', pan: '', incorporation_number: '' });
     const [showPass, setShowPass] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -79,36 +83,24 @@ const CreateUserTab = ({ token, onCreated }) => {
     const handleSubmit = async e => {
         e.preventDefault();
         if (!form.name || !form.email || !form.password) {
-            setError('All fields are required.'); return;
+            setError('Name, email and password are required.'); return;
         }
         setLoading(true); setError(''); setSuccess('');
         try {
-            // Step 1: Register the user
-            const regRes = await fetch(`${API}/auth/register`, {
+            // Use the admin create-user endpoint which handles role assignment in one call
+            const res = await fetch(ADMIN_USERS_API, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: form.name, email: form.email, password: form.password })
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(form)
             });
-            const regData = await regRes.json();
-            if (!regRes.ok) throw new Error(regData.error || 'Registration failed');
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to create user');
 
-            const newUserId = regData.user.id;
-
-            // Step 2: If role is not 'user', promote via admin endpoint
-            if (form.role !== 'user') {
-                const roleRes = await fetch(`${API}/users/${newUserId}/role`, {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ role: form.role })
-                });
-                if (!roleRes.ok) throw new Error('User created but role promotion failed. Check token.');
-            }
-
-            setSuccess(`✓ ${form.role.charAt(0).toUpperCase() + form.role.slice(1)} account created for ${form.email}`);
-            setForm({ name: '', email: '', password: '', role: 'user' });
+            setSuccess(`✓ ${ROLE_CONFIG[form.role]?.label || form.role} account created for ${form.email}`);
+            setForm({ name: '', email: '', password: '', role: 'user', organization_name: '', phone: '', gst: '', pan: '', incorporation_number: '' });
             onCreated();
         } catch (err) {
             setError(err.message);
@@ -116,6 +108,9 @@ const CreateUserTab = ({ token, onCreated }) => {
             setLoading(false);
         }
     };
+
+    const showOrgFields = form.role === 'university' || form.role === 'company';
+    const showCompanyFields = form.role === 'company';
 
     return (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2.5rem', alignItems: 'start' }}>
@@ -150,32 +145,51 @@ const CreateUserTab = ({ token, onCreated }) => {
                     </div>
                     <div>
                         <label style={labelSt}>Assign Role</label>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem' }}>
-                            {['user', 'member', 'admin'].map(r => {
-                                const cfg = ROLE_CONFIG[r];
-                                const selected = form.role === r;
-                                return (
-                                    <button key={r} type="button" onClick={() => setForm(p => ({ ...p, role: r }))}
-                                        style={{
-                                            padding: '0.65rem', borderRadius: '8px', cursor: 'pointer',
-                                            border: `2px solid ${selected ? cfg.bg : '#E2E8F0'}`,
-                                            background: selected ? cfg.light : 'white',
-                                            fontFamily: 'var(--font-sans)', transition: 'all 0.15s',
-                                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem'
-                                        }}>
-                                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: selected ? cfg.bg : '#E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            {r === 'admin' ? <Crown size={13} color={selected ? 'white' : '#94A3B8'} /> :
-                                             r === 'member' ? <Shield size={13} color={selected ? 'white' : '#94A3B8'} /> :
-                                             <User size={13} color={selected ? 'white' : '#94A3B8'} />}
-                                        </div>
-                                        <span style={{ fontSize: '0.78rem', fontWeight: '700', color: selected ? cfg.text : '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                                            {cfg.label}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </div>
+                        <select name="role" value={form.role} onChange={handleChange} style={{ ...inputSt, cursor: 'pointer' }}>
+                            <option value="user">User</option>
+                            <option value="member">Member</option>
+                            <option value="university">University</option>
+                            <option value="company">Company</option>
+                            <option value="executive">Executive</option>
+                            <option value="admin">Admin</option>
+                        </select>
                     </div>
+
+                    {showOrgFields && (
+                        <>
+                            <div>
+                                <label style={labelSt}>Organization Name *</label>
+                                <input name="organization_name" value={form.organization_name} onChange={handleChange}
+                                    placeholder={form.role === 'company' ? 'Acme Corp' : 'Harvard University'}
+                                    style={inputSt} required />
+                            </div>
+                            <div>
+                                <label style={labelSt}>Phone Number *</label>
+                                <input name="phone" value={form.phone} onChange={handleChange}
+                                    placeholder="+1 234 567 8900" style={inputSt} required />
+                            </div>
+                        </>
+                    )}
+
+                    {showCompanyFields && (
+                        <>
+                            <div>
+                                <label style={labelSt}>GST Number</label>
+                                <input name="gst" value={form.gst} onChange={handleChange}
+                                    placeholder="Optional" style={inputSt} />
+                            </div>
+                            <div>
+                                <label style={labelSt}>PAN Number</label>
+                                <input name="pan" value={form.pan} onChange={handleChange}
+                                    placeholder="Optional" style={inputSt} />
+                            </div>
+                            <div>
+                                <label style={labelSt}>Incorporation Number</label>
+                                <input name="incorporation_number" value={form.incorporation_number} onChange={handleChange}
+                                    placeholder="Optional" style={inputSt} />
+                            </div>
+                        </>
+                    )}
 
                     {error && (
                         <div style={errorBox}>
@@ -190,7 +204,7 @@ const CreateUserTab = ({ token, onCreated }) => {
 
                     <button type="submit" disabled={loading}
                         style={{ ...btnPrim, opacity: loading ? 0.75 : 1, marginTop: '0.25rem' }}>
-                        {loading ? 'Creating...' : `Create ${ROLE_CONFIG[form.role].label} Account`}
+                        {loading ? 'Creating...' : `Create ${ROLE_CONFIG[form.role]?.label || form.role} Account`}
                     </button>
                 </form>
             </div>
@@ -237,14 +251,14 @@ const ManageUsersTab = ({ token, currentUserId, showToast }) => {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [filterRole, setFilterRole] = useState('all');
-    const [actionMenu, setActionMenu] = useState(null); // userId with open menu
     const [deleteConfirm, setDeleteConfirm] = useState(null);
     const [editRole, setEditRole] = useState(null); // { id, current }
 
     const fetchUsers = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API}/users`, {
+            // Correct endpoint: /api/admin/users (not /api/users)
+            const res = await fetch(ADMIN_USERS_API, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data = await res.json();
@@ -257,7 +271,8 @@ const ManageUsersTab = ({ token, currentUserId, showToast }) => {
 
     const handleRoleChange = async (userId, newRole) => {
         try {
-            const res = await fetch(`${API}/users/${userId}/role`, {
+            // Correct endpoint: /api/admin/users/:id/role
+            const res = await fetch(`${ADMIN_USERS_API}/${userId}/role`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ role: newRole })
@@ -267,12 +282,12 @@ const ManageUsersTab = ({ token, currentUserId, showToast }) => {
             showToast(`Role updated to ${newRole}`);
         } catch { showToast('Failed to update role', 'error'); }
         setEditRole(null);
-        setActionMenu(null);
     };
 
     const handleBan = async (userId, isBanned) => {
         try {
-            const res = await fetch(`${API}/users/${userId}/ban`, {
+            // Correct endpoint: /api/admin/users/:id/ban
+            const res = await fetch(`${ADMIN_USERS_API}/${userId}/ban`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ is_banned: isBanned })
@@ -281,12 +296,12 @@ const ManageUsersTab = ({ token, currentUserId, showToast }) => {
             setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_banned: isBanned ? 1 : 0 } : u));
             showToast(`User ${isBanned ? 'banned' : 'unbanned'} successfully`);
         } catch { showToast('Failed to update ban status', 'error'); }
-        setActionMenu(null);
     };
 
     const handleDelete = async (userId) => {
         try {
-            const res = await fetch(`${API}/users/${userId}`, {
+            // Correct endpoint: /api/admin/users/:id
+            const res = await fetch(`${ADMIN_USERS_API}/${userId}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -305,8 +320,12 @@ const ManageUsersTab = ({ token, currentUserId, showToast }) => {
         return matchSearch && matchRole;
     });
 
+    // Count per role (group admin+executive together under 'admin' for display)
     const counts = { all: users.length, admin: 0, member: 0, user: 0 };
-    users.forEach(u => { if (counts[u.role] !== undefined) counts[u.role]++; });
+    users.forEach(u => {
+        if (u.role === 'admin' || u.role === 'executive') counts.admin++;
+        else if (counts[u.role] !== undefined) counts[u.role]++;
+    });
 
     return (
         <div>
@@ -400,6 +419,9 @@ const ManageUsersTab = ({ token, currentUserId, showToast }) => {
                                             >
                                                 <option value="user">User</option>
                                                 <option value="member">Member</option>
+                                                <option value="university">University</option>
+                                                <option value="company">Company</option>
+                                                <option value="executive">Executive</option>
                                                 <option value="admin">Admin</option>
                                             </select>
                                             <button onClick={() => setEditRole(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}><X size={14} /></button>

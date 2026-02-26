@@ -9,7 +9,17 @@ import { useAuth } from '../context/AuthContext';
 
 const Home = () => {
     const { API } = useAuth();
-    const [videoUrl, setVideoUrl] = useState('');
+    const getYouTubeId = (url) => {
+        if (!url) return null;
+        const match = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+        return match ? match[1] : null;
+    };
+
+    const isYouTube = (url) => url && (url.includes('youtube.com') || url.includes('youtu.be'));
+
+    const [videos, setVideos] = useState([]);
+    const [activeVideoIdx, setActiveVideoIdx] = useState(0);
+    const [playingVideoIdx, setPlayingVideoIdx] = useState(null);
     const [news, setNews] = useState([]);
     const [expandedNews, setExpandedNews] = useState(null);
     const carouselRef = useRef(null);
@@ -29,14 +39,6 @@ const Home = () => {
                 const res = await fetch(`${API}/resources`);
                 if (res.ok) {
                     const data = await res.json();
-
-                    const hpVideos = data.filter(r => r.type === 'homepage video');
-                    if (hpVideos.length > 0) {
-                        hpVideos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                        const video = hpVideos[0];
-                        setVideoUrl(video.source_url || (video.file_path ? `${API.replace('/api', '')}${video.file_path}` : ''));
-                    }
-
                     const newsItems = data.filter(r => r.type === 'news');
                     newsItems.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
                     setNews(newsItems);
@@ -47,7 +49,20 @@ const Home = () => {
         };
         fetchHomepageData();
 
-        // Fetch products
+        // Fetch latest 5 videos for hero carousel
+        const fetchVideos = async () => {
+            try {
+                const res = await fetch(`${API}/resources/videos`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setVideos(data.slice(0, 5));
+                }
+            } catch (err) {
+                console.error('Error fetching videos', err);
+            }
+        };
+        fetchVideos();
+
         const fetchProducts = async () => {
             try {
                 const res = await fetch(`${API}/products`);
@@ -57,7 +72,34 @@ const Home = () => {
         fetchProducts();
     }, [API]);
 
-    // Auto-rotate the news carousel
+    // Auto-scroll video carousel every 4s, pauses while a video is playing
+    useEffect(() => {
+        if (videos.length <= 1) return;
+        const interval = setInterval(() => {
+            if (playingVideoIdx !== null) return;
+            setActiveVideoIdx(prev => (prev + 1) % videos.length);
+        }, 4000);
+        return () => clearInterval(interval);
+    }, [videos.length, playingVideoIdx]);
+    // Inject carousel CSS once
+    useEffect(() => {
+        const id = 'vc-styles';
+        if (document.getElementById(id)) return;
+        const el = document.createElement('style');
+        el.id = id;
+        el.textContent = [
+            '@keyframes vcFadeIn { from { opacity:0; transform:scale(1.04); } to { opacity:1; transform:scale(1); } }',
+            '@keyframes vcProgress { from { width:0%; } to { width:100%; } }',
+            '.vc-play-btn:hover .vc-play-circle { transform:scale(1.15) !important; background:rgba(255,255,255,0.32) !important; box-shadow:0 0 0 10px rgba(255,255,255,0.08) !important; }',
+            '.vc-dot:hover { background:rgba(255,255,255,0.75) !important; }'
+        ].join(' ');
+        document.head.appendChild(el);
+        return () => { const s = document.getElementById(id); if(s) s.remove(); };
+    }, []);
+
+
+
+    // Auto-rotate news carousel
     useEffect(() => {
         const interval = setInterval(() => {
             if (carouselRef.current && news.length > 0) {
@@ -68,7 +110,7 @@ const Home = () => {
                     carouselRef.current.scrollBy({ left: 240, behavior: 'smooth' });
                 }
             }
-        }, 4000); // rotate every 4 seconds
+        }, 4000);
         return () => clearInterval(interval);
     }, [news]);
 
@@ -87,7 +129,6 @@ const Home = () => {
         return () => clearInterval(interval);
     }, [products]);
 
-    // Star rendering helper
     const StarRating = ({ rating, size = 16 }) => (
         <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
             {[1, 2, 3, 4, 5].map(i => (
@@ -96,7 +137,6 @@ const Home = () => {
         </div>
     );
 
-    // Fetch full product details for modal
     const openProductModal = async (product) => {
         try {
             const res = await fetch(`${API}/products/${product.id}`);
@@ -121,15 +161,13 @@ const Home = () => {
                         style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: '0.6' }}
                     >
                         <source src="https://videos.pexels.com/video-files/3129671/3129671-hd_1920_1080_30fps.mp4" type="video/mp4" />
-                        {/* Fallback for video */}
                     </video>
-                    {/* Reduced opacity from 0.8/0.9 to 0.7/0.8 for better video visibility */}
                     <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'linear-gradient(rgba(0,51,102,0.7), rgba(0,34,68,0.8))' }}></div>
                 </div>
 
                 <div className="container" style={{ position: 'relative', zIndex: 2, padding: '4rem 2rem', width: '100%' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4rem', alignItems: 'center' }}>
-                        {/* Left Column: Content */}
+                        {/* Left Column */}
                         <div>
                             <h1 style={{ color: 'white', marginBottom: '1.5rem', lineHeight: '1.1', fontSize: '3.5rem', textShadow: '0 2px 4px rgba(0,0,0,0.5)', letterSpacing: '-0.02em' }}>{heroContent.title}</h1>
                             <p style={{ fontSize: '1.4rem', color: '#F7FAFC', marginBottom: '3rem', lineHeight: '1.6', fontWeight: '400', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
@@ -145,30 +183,111 @@ const Home = () => {
                             </div>
                         </div>
 
-                        {/* Right Column: Video Playback Element */}
+                        {/* Right Column: Video Carousel */}
                         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                             <div style={{
-                                width: '100%',
-                                maxWidth: '600px',
-                                aspectRatio: '16/9',
+                                width: '100%', maxWidth: '600px',
                                 backgroundColor: 'rgba(0,0,0,0.5)',
-                                border: '1px solid rgba(255,255,255,0.2)',
-                                borderRadius: '8px',
-                                backdropFilter: 'blur(10px)',
-                                display: 'flex',
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
-                                position: 'relative',
-                                overflow: 'hidden'
+                                border: '1px solid rgba(255,255,255,0.15)',
+                                borderRadius: '12px', backdropFilter: 'blur(12px)',
+                                boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+                                position: 'relative', overflow: 'hidden'
                             }}>
-                                {/* Placeholder for actual video playback or image */}
-                                <a href={videoUrl || '#'} target={videoUrl ? "_blank" : "_self"} rel={videoUrl ? "noopener noreferrer" : ""} style={{ textAlign: 'center', color: 'white', textDecoration: 'none' }}>
-                                    <div style={{ width: '60px', height: '60px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto', cursor: 'pointer', border: '2px solid white' }}>
-                                        <div style={{ width: '0', height: '0', borderTop: '10px solid transparent', borderBottom: '10px solid transparent', borderLeft: '18px solid white', marginLeft: '4px' }}></div>
+                                {videos.length === 0 ? (
+                                    <div style={{ aspectRatio: '16/9', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                                        <div style={{ textAlign: 'center', color: 'white' }}>
+                                            <div style={{ width: '60px', height: '60px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto', border: '2px solid white' }}>
+                                                <div style={{ width: '0', height: '0', borderTop: '10px solid transparent', borderBottom: '10px solid transparent', borderLeft: '18px solid white', marginLeft: '4px' }}></div>
+                                            </div>
+                                            <p style={{ fontWeight: '600', letterSpacing: '0.05em', fontSize: '0.9rem' }}>WATCH SHOWREEL</p>
+                                        </div>
                                     </div>
-                                    <p style={{ fontWeight: '600', letterSpacing: '0.05em', fontSize: '0.9rem' }}>WATCH SHOWREEL</p>
-                                </a>
+                                ) : playingVideoIdx !== null ? (
+                                    /* Playing */
+                                    <div style={{ position: 'relative', aspectRatio: '16/9', animation: 'vcFadeIn 0.35s ease' }}>
+                                        {isYouTube(videos[playingVideoIdx].source_url) ? (
+                                            <iframe
+                                                src={`https://www.youtube.com/embed/${getYouTubeId(videos[playingVideoIdx].source_url)}?autoplay=1&rel=0`}
+                                                style={{ width: '100%', height: '100%', border: 'none', position: 'absolute', inset: 0 }}
+                                                allow="autoplay; fullscreen" allowFullScreen
+                                                title={videos[playingVideoIdx].title}
+                                            />
+                                        ) : (
+                                            <video src={videos[playingVideoIdx].file_path} controls autoPlay
+                                                style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0, background: '#000' }}
+                                            />
+                                        )}
+                                        <button onClick={() => setPlayingVideoIdx(null)}
+                                            style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '50%', width: '32px', height: '32px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, fontSize: '14px', transition: 'background 0.2s' }}
+                                            onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+                                            onMouseOut={e => e.currentTarget.style.background = 'rgba(0,0,0,0.6)'}
+                                        >✕</button>
+                                    </div>
+                                ) : (
+                                    /* Thumbnail — key forces re-mount on index change triggering fade */
+                                    <div key={activeVideoIdx} style={{ position: 'relative', aspectRatio: '16/9', animation: 'vcFadeIn 0.5s ease' }}>
+                                        {(() => {
+                                            const v = videos[activeVideoIdx];
+                                            const ytId = getYouTubeId(v.source_url);
+                                            const thumb = v.thumbnail_url || (ytId ? `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg` : null);
+                                            return thumb ? (
+                                                <img src={thumb} alt={v.title} style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
+                                            ) : v.file_path ? (
+                                                <video src={v.file_path} preload="metadata" muted playsInline
+                                                    style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
+                                            ) : (
+                                                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, #0f2444, #1a3a5c)' }} />
+                                            );
+                                        })()}
+                                        {/* Gradient overlay */}
+                                        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.2) 55%, transparent 100%)' }} />
+                                        {/* Counter badge */}
+                                        {videos.length > 1 && (
+                                            <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '20px', padding: '3px 10px', fontSize: '0.68rem', fontWeight: '700', color: 'white', zIndex: 3, letterSpacing: '0.05em' }}>
+                                                {activeVideoIdx + 1} / {videos.length}
+                                            </div>
+                                        )}
+                                        {/* Play button */}
+                                        <button className="vc-play-btn" onClick={() => setPlayingVideoIdx(activeVideoIdx)}
+                                            style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', zIndex: 2 }}
+                                        >
+                                            <div className="vc-play-circle" style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgba(255,255,255,0.85)', transition: 'all 0.25s ease' }}>
+                                                <div style={{ width: '0', height: '0', borderTop: '11px solid transparent', borderBottom: '11px solid transparent', borderLeft: '20px solid white', marginLeft: '5px' }} />
+                                            </div>
+                                        </button>
+                                        {/* Title */}
+                                        <div style={{ position: 'absolute', bottom: '14px', left: '14px', right: '14px', zIndex: 3, pointerEvents: 'none' }}>
+                                            <p style={{ margin: '0 0 3px', color: 'rgba(255,255,255,0.5)', fontSize: '0.65rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Watch Showreel</p>
+                                            <p style={{ margin: 0, color: 'white', fontSize: '0.92rem', fontWeight: '700', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 1px 6px rgba(0,0,0,0.7)' }}>{videos[activeVideoIdx]?.title}</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Progress bar + dots */}
+                                {videos.length > 1 && playingVideoIdx === null && (
+                                    <div style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', padding: '0 14px 10px' }}>
+                                        {/* Progress bar — key restarts animation on each slide */}
+                                        <div style={{ height: '2px', background: 'rgba(255,255,255,0.12)', borderRadius: '2px', margin: '0 0 10px', overflow: 'hidden' }}>
+                                            <div key={activeVideoIdx} style={{ height: '100%', background: 'white', borderRadius: '2px', animation: 'vcProgress 4s linear forwards' }} />
+                                        </div>
+                                        {/* Dots */}
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
+                                            {videos.map((v, i) => (
+                                                <button key={i} className="vc-dot"
+                                                    onClick={() => { setActiveVideoIdx(i); setPlayingVideoIdx(null); }}
+                                                    title={v.title}
+                                                    style={{
+                                                        width: i === activeVideoIdx ? '24px' : '7px', height: '7px',
+                                                        borderRadius: '4px', border: 'none', padding: 0, cursor: 'pointer',
+                                                        background: i === activeVideoIdx ? 'white' : 'rgba(255,255,255,0.3)',
+                                                        boxShadow: i === activeVideoIdx ? '0 0 8px rgba(255,255,255,0.6)' : 'none',
+                                                        transition: 'all 0.35s cubic-bezier(0.4,0,0.2,1)'
+                                                    }}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -269,7 +388,7 @@ const Home = () => {
                 </Section>
             )}
 
-            {/* Featured Services (Flashcards) */}
+            {/* Featured Services */}
             <Section style={{ padding: '4rem 0' }}>
                 <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
                     <h2 style={{ color: 'var(--primary)', textShadow: '0 2px 4px rgba(255,255,255,0.5)', fontSize: '2.5rem' }}>Our Services</h2>
@@ -290,7 +409,7 @@ const Home = () => {
                 </div>
             </Section>
 
-            {/* Intro Section - Adjusted */}
+            {/* Intro Section */}
             <Section>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4rem', alignItems: 'center' }}>
                     <div>
@@ -375,18 +494,10 @@ const Home = () => {
 
             {/* Read More News Modal */}
             {expandedNews && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-                    zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center'
-                }}
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     onClick={() => setExpandedNews(null)}
                 >
-                    <div style={{
-                        background: 'white', borderRadius: 'var(--radius-md)',
-                        padding: '2.5rem', maxWidth: '600px', width: '90%',
-                        boxShadow: '0 20px 50px rgba(0,0,0,0.3)', position: 'relative',
-                        maxHeight: '90vh', overflowY: 'auto'
-                    }}
+                    <div style={{ background: 'white', borderRadius: 'var(--radius-md)', padding: '2.5rem', maxWidth: '600px', width: '90%', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}
                         onClick={e => e.stopPropagation()}
                     >
                         <button onClick={() => setExpandedNews(null)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
@@ -431,8 +542,6 @@ const Home = () => {
                                 <Download size={18} /> Visit Product Page
                             </a>
                         )}
-
-                        {/* Reviews Section */}
                         {selectedProduct.reviews && selectedProduct.reviews.length > 0 && (
                             <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '20px' }}>
                                 <h3 style={{ fontSize: '1.1rem', marginBottom: '15px', color: 'var(--text-main)' }}>Member Reviews</h3>

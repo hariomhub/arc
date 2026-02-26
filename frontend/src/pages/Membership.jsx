@@ -70,8 +70,10 @@ const Membership = () => {
     const [showPw, setShowPw] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
     const [form, setForm] = useState({
-        name: '', email: '', password: '', confirmPassword: '', organisation: '',
-        role: 'user', // user, university, company
+        name: '', email: '', password: '', confirmPassword: '',
+        // FIX: field name is organization_name (matches AuthContext + backend), not 'organisation'
+        organization_name: '',
+        role: 'user', // user | university | company
         gst: '', pan: '', incorporation_number: '', phone: ''
     });
     const [fieldErrors, setFieldErrors] = useState({});
@@ -104,11 +106,14 @@ const Membership = () => {
         const errors = {};
         if (authMode === 'register') {
             if (!form.name.trim() || form.name.trim().length < 2) errors.name = 'Full name must be at least 2 characters.';
-            if (!form.organisation.trim()) errors.organisation = 'Organisation / affiliation is required.';
+            if (!form.organization_name.trim()) errors.organization_name = 'Organisation / affiliation is required.';
             if (form.role === 'company') {
                 if (!form.gst.trim()) errors.gst = 'GST Number is required.';
                 if (!form.pan.trim()) errors.pan = 'PAN is required.';
                 if (!form.incorporation_number.trim()) errors.incorporation_number = 'Incorporation Number is required.';
+                if (!form.phone.trim()) errors.phone = 'Phone number is required.';
+            }
+            if (form.role === 'university') {
                 if (!form.phone.trim()) errors.phone = 'Phone number is required.';
             }
         }
@@ -136,9 +141,11 @@ const Membership = () => {
                 await login(form.email, form.password);
                 navigate('/');
             } else {
+                // FIX: pass form.organization_name (was incorrectly form.organisation before)
                 await register(
                     form.name, form.email, form.password, form.role,
-                    form.organisation, form.gst, form.pan, form.incorporation_number, form.phone
+                    form.organization_name, form.gst, form.pan,
+                    form.incorporation_number, form.phone
                 );
                 setSuccess('Account created successfully! Welcome to the AI Risk Council.');
                 setTimeout(() => navigate('/'), 1800);
@@ -151,9 +158,12 @@ const Membership = () => {
     };
 
     const ROLE_INFO = {
-        admin: { color: '#7C3AED', label: 'Administrator', desc: 'Full access to all resources, uploads, and user management.' },
-        member: { color: '#003366', label: 'Member', desc: 'Access to all public and member-only resources, templates, and community.' },
-        user: { color: '#64748B', label: 'User', desc: 'Access to public resources only.' },
+        admin:      { color: '#7C3AED', label: 'Administrator',    desc: 'Full access to all resources, uploads, and user management.' },
+        executive:  { color: '#7C3AED', label: 'Executive Member', desc: 'Secondary admin access to all council resources and management tools.' },
+        member:     { color: '#003366', label: 'Member',           desc: 'Access to all public and member-only resources, templates, and community.' },
+        university: { color: '#0369A1', label: 'University',       desc: 'University / educational institution account with member-level access.' },
+        company:    { color: '#059669', label: 'Company',          desc: 'Corporate account with member-level access and company profile.' },
+        user:       { color: '#64748B', label: 'User',             desc: 'Access to public resources only.' },
     };
     const roleInfo = ROLE_INFO[user?.role] || ROLE_INFO.user;
 
@@ -350,12 +360,29 @@ const Membership = () => {
                                                 onChange={handleChange} placeholder="Jane Smith"
                                                 error={fieldErrors.name}
                                             />
+
+                                            {/* FIX: name="organization_name" (was "organisation") */}
                                             <InputField
-                                                label={form.role === 'university' ? 'University Name' : form.role === 'company' ? 'Company Name' : 'Organisation / Affiliation'}
-                                                name="organisation" value={form.organisation}
-                                                onChange={handleChange} placeholder={form.role === 'company' ? 'Acme Corp' : 'Organisation Name'}
-                                                error={fieldErrors.organisation}
+                                                label={
+                                                    form.role === 'university' ? 'University Name' :
+                                                    form.role === 'company'    ? 'Company Name' :
+                                                    'Organisation / Affiliation'
+                                                }
+                                                name="organization_name"
+                                                value={form.organization_name}
+                                                onChange={handleChange}
+                                                placeholder={form.role === 'company' ? 'Acme Corp' : form.role === 'university' ? 'Harvard University' : 'Organisation Name'}
+                                                error={fieldErrors.organization_name}
                                             />
+
+                                            {/* Phone for university too */}
+                                            {(form.role === 'university' || form.role === 'company') && (
+                                                <InputField
+                                                    label="Phone Number" name="phone" value={form.phone} type="tel"
+                                                    onChange={handleChange} placeholder="+91 98765 43210"
+                                                    error={fieldErrors.phone}
+                                                />
+                                            )}
 
                                             {form.role === 'company' && (
                                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -373,11 +400,6 @@ const Membership = () => {
                                                         label="Incorporation No." name="incorporation_number" value={form.incorporation_number}
                                                         onChange={handleChange} placeholder="U12345SK2000PTC123456"
                                                         error={fieldErrors.incorporation_number}
-                                                    />
-                                                    <InputField
-                                                        label="Phone Number" name="phone" value={form.phone} type="tel"
-                                                        onChange={handleChange} placeholder="+91 98765 43210"
-                                                        error={fieldErrors.phone}
                                                     />
                                                 </div>
                                             )}
@@ -447,7 +469,7 @@ const Membership = () => {
                                             fontFamily: 'var(--font-sans)', transition: 'background 0.15s', marginTop: '0.25rem',
                                         }}
                                         onMouseOver={e => { if (!loading) e.currentTarget.style.background = '#00509E'; }}
-                                        onMouseOut={e => { if (!loading) e.currentTarget.style.background = '#003366'; }}
+                                        onMouseOut={e => { if (!loading) e.currentTarget.style.background = loading ? '#94A3B8' : '#003366'; }}
                                     >
                                         {loading
                                             ? (authMode === 'login' ? 'Signing in…' : 'Creating account…')

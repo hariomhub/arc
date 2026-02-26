@@ -6,9 +6,12 @@ import Button from './Button';
 import { useAuth } from '../context/AuthContext';
 
 const ROLE_STYLES = {
-    admin: { bg: '#7C3AED', label: 'Admin' },
-    member: { bg: '#003366', label: 'Member' },
-    user: { bg: '#64748B', label: 'User' },
+    admin:     { bg: '#7C3AED', label: 'Admin' },
+    executive: { bg: '#7C3AED', label: 'Executive' },
+    member:    { bg: '#003366', label: 'Member' },
+    user:      { bg: '#64748B', label: 'User' },
+    university:{ bg: '#0369A1', label: 'University' },
+    company:   { bg: '#059669', label: 'Company' },
 };
 
 const Header = () => {

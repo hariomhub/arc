@@ -23,11 +23,20 @@ async function migrate() {
 
         // Migrate existing category to new categories JSON array
         console.log('Migrating existing data...');
-        const members = await db.all('SELECT id, category FROM team_members');
-        for (const m of members) {
-            let cat = m.category || 'leadership';
-            let newCats = JSON.stringify([cat]);
-            await db.run('UPDATE team_members SET categories = ? WHERE id = ?', [newCats, m.id]);
+        // Check if old column exists
+        const columns = await db.all("PRAGMA table_info(team_members)");
+        const hasOldCategory = columns.some(col => col.name === 'category');
+
+        if (hasOldCategory) {
+            console.log('Old category column found. Migrating data...');
+            const members = await db.all('SELECT id, category FROM team_members');
+            for (const m of members) {
+                let cat = m.category || 'leadership';
+                let newCats = JSON.stringify([cat]);
+                await db.run('UPDATE team_members SET categories = ? WHERE id = ?', [newCats, m.id]);
+            }
+        } else {
+            console.log('No old category column found. Skipping migration.');
         }
 
         console.log('Migration completed successfully.');

@@ -143,8 +143,8 @@ async function run() {
                 }
                 const dbImgPath = `/uploads/${fileName}`;
                 await db.run(
-                    'INSERT INTO team_members (name, role, description, linkedin_url, image_url, category) VALUES (?, ?, ?, ?, ?, ?)',
-                    [t.name, t.role, t.description, t.linkedin, dbImgPath, t.category]
+                    'INSERT INTO team_members (name, role, description, linkedin_url, image_url, categories) VALUES (?, ?, ?, ?, NULL, ?)',
+                    [t.name, t.role, t.description, t.linkedin, JSON.stringify([t.category])]
                 );
                 successCount++;
             } catch (err) {

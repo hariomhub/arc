@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, MapPin, Clock, Users, ArrowRight, Mic, Monitor, BookOpen, Radio, Video } from 'lucide-react';
 
-const API = 'http://localhost:5000/api';
+const API = '/api';
 
 // ─── Type meta ───────────────────────────────────────────────────────────────
 const TYPE_META = {

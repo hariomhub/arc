@@ -8,12 +8,16 @@ import {
 } from 'lucide-react';
 
 const ROLE_STYLES = {
-    admin: { bg: '#7C3AED', label: 'Admin', icon: <Crown size={12} /> },
-    member: { bg: '#003366', label: 'Member', icon: <Shield size={12} /> },
-    user: { bg: '#64748B', label: 'User', icon: <User size={12} /> },
+    admin:     { bg: '#7C3AED', label: 'Admin',     icon: <Crown size={12} /> },
+    executive: { bg: '#7C3AED', label: 'Executive', icon: <Crown size={12} /> },
+    member:    { bg: '#003366', label: 'Member',    icon: <Shield size={12} /> },
+    user:      { bg: '#64748B', label: 'User',      icon: <User size={12} /> },
+    university:{ bg: '#0369A1', label: 'University',icon: <User size={12} /> },
+    company:   { bg: '#059669', label: 'Company',   icon: <User size={12} /> },
 };
 
-const Badge = ({ role }) => {
+// Badge supports an optional `label` override for custom display text
+const Badge = ({ role, label: labelOverride }) => {
     const s = ROLE_STYLES[role] || ROLE_STYLES.user;
     return (
         <span style={{
@@ -22,10 +26,22 @@ const Badge = ({ role }) => {
             padding: '0.2rem 0.6rem', borderRadius: '100px',
             fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em'
         }}>
-            {s.icon} {s.label}
+            {s.icon} {labelOverride || s.label}
         </span>
     );
 };
+
+// Small inline tag for displaying GST / PAN / Inc numbers (no role colour needed)
+const InfoTag = ({ children }) => (
+    <span style={{
+        display: 'inline-flex', alignItems: 'center',
+        background: '#F1F5F9', color: '#475569',
+        padding: '0.15rem 0.5rem', borderRadius: '4px',
+        fontSize: '0.7rem', fontWeight: '600'
+    }}>
+        {children}
+    </span>
+);
 
 const Toast = ({ message, type, onClose }) => (
     <div style={{
@@ -87,7 +103,7 @@ const UserManagement = () => {
     const [search, setSearch] = useState('');
     const [toast, setToast] = useState(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
-    const [confirmDelete, setConfirmDelete] = useState(null); // user to delete
+    const [confirmDelete, setConfirmDelete] = useState(null);
     const [createForm, setCreateForm] = useState({ name: '', email: '', password: '', role: 'user', organization_name: '', gst: '', pan: '', incorporation_number: '', phone: '' });
     const [createLoading, setCreateLoading] = useState(false);
 
@@ -201,7 +217,7 @@ const UserManagement = () => {
     // Stats
     const stats = {
         total: users.length,
-        admins: users.filter(u => u.role === 'admin').length,
+        admins: users.filter(u => u.role === 'admin' || u.role === 'executive').length,
         members: users.filter(u => u.role === 'member').length,
         banned: users.filter(u => u.is_banned).length,
     };
@@ -309,11 +325,11 @@ const UserManagement = () => {
                                                             <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                                                                 {u.organization_name && <span style={{ fontSize: '0.75rem', color: '#0369A1', fontWeight: '600' }}>🏢 {u.organization_name}</span>}
                                                                 {u.phone && <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>📞 {u.phone}</span>}
-                                                                {u.role === 'company' && (
+                                                                {(u.role === 'company' || u.role === 'university') && (
                                                                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
-                                                                        {u.gst && <Badge role="user" customLabel={`GST: ${u.gst}`} />}
-                                                                        {u.pan && <Badge role="user" customLabel={`PAN: ${u.pan}`} />}
-                                                                        {u.incorporation_number && <Badge role="user" customLabel={`Inc: ${u.incorporation_number}`} />}
+                                                                        {u.gst && <InfoTag>GST: {u.gst}</InfoTag>}
+                                                                        {u.pan && <InfoTag>PAN: {u.pan}</InfoTag>}
+                                                                        {u.incorporation_number && <InfoTag>Inc: {u.incorporation_number}</InfoTag>}
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -333,8 +349,8 @@ const UserManagement = () => {
                                                             onChange={e => handleRoleChange(u.id, e.target.value)}
                                                             style={{
                                                                 appearance: 'none', padding: '0.3rem 1.8rem 0.3rem 0.7rem',
-                                                                borderRadius: '100px', border: `1.5px solid ${ROLE_STYLES[u.role]?.bg}`,
-                                                                background: 'white', color: ROLE_STYLES[u.role]?.bg,
+                                                                borderRadius: '100px', border: `1.5px solid ${ROLE_STYLES[u.role]?.bg || '#64748B'}`,
+                                                                background: 'white', color: ROLE_STYLES[u.role]?.bg || '#64748B',
                                                                 fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer',
                                                                 textTransform: 'uppercase', letterSpacing: '0.05em',
                                                                 fontFamily: 'var(--font-sans)'
@@ -342,9 +358,12 @@ const UserManagement = () => {
                                                         >
                                                             <option value="user">User</option>
                                                             <option value="member">Member</option>
+                                                            <option value="university">University</option>
+                                                            <option value="company">Company</option>
+                                                            <option value="executive">Executive</option>
                                                             <option value="admin">Admin</option>
                                                         </select>
-                                                        <ChevronDown size={10} style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: ROLE_STYLES[u.role]?.bg }} />
+                                                        <ChevronDown size={10} style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: ROLE_STYLES[u.role]?.bg || '#64748B' }} />
                                                     </div>
                                                 )}
                                             </td>
@@ -425,8 +444,8 @@ const UserManagement = () => {
                                 <option value="member">Member — Member-only resources</option>
                                 <option value="university">University / Educational Institution</option>
                                 <option value="company">Corporate / Product Company</option>
-                                <option value="admin">Admin — Full access</option>
                                 <option value="executive">Executive — Secondary Admin</option>
+                                <option value="admin">Admin — Full access</option>
                             </select>
                         </div>
 

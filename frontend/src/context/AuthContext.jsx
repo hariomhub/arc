@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext(null);
-
-const API = 'http://localhost:5000/api';
+const API = '/api';
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
@@ -12,7 +11,10 @@ export const AuthProvider = ({ children }) => {
     // On mount, verify token and load user
     useEffect(() => {
         const verify = async () => {
-            if (!token) { setLoading(false); return; }
+            if (!token) {
+                setLoading(false);
+                return;
+            }
             try {
                 const res = await fetch(`${API}/auth/me`, {
                     headers: { Authorization: `Bearer ${token}` }
@@ -21,7 +23,6 @@ export const AuthProvider = ({ children }) => {
                     const data = await res.json();
                     setUser(data);
                 } else {
-                    // Token invalid/expired
                     sessionStorage.removeItem('token');
                     setToken(null);
                     setUser(null);
@@ -77,12 +78,13 @@ export const AuthProvider = ({ children }) => {
     const isCompany = user?.role === 'company';
     const isLoggedIn = !!user;
 
-    // Authenticated fetch helper
+    // Authenticated fetch helper — does NOT set Content-Type for FormData
     const authFetch = (url, options = {}) => {
+        const isFormData = options.body instanceof FormData;
         return fetch(url, {
             ...options,
             headers: {
-                'Content-Type': 'application/json',
+                ...(!isFormData && { 'Content-Type': 'application/json' }),
                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
                 ...options.headers
             }
@@ -93,9 +95,9 @@ export const AuthProvider = ({ children }) => {
         <AuthContext.Provider value={{
             user, token, loading,
             login, register, logout,
-            isAdmin, isMember, isLoggedIn,
-            isUniversity, isCompany,
-            authFetch, API
+            isAdmin, isMember, isUniversity, isCompany, isLoggedIn,
+            authFetch,
+            API
         }}>
             {children}
         </AuthContext.Provider>

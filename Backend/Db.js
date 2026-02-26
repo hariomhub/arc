@@ -1,8 +1,18 @@
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
 const path = require('path');
+require('dotenv').config();
 
-const dbPath = path.resolve(__dirname, 'database.sqlite');
+// ─── DB Path ─────────────────────────────────────────────────────────────────
+// Priority: SQLITE_DB_PATH env var → default based on environment
+const isProd = process.env.NODE_ENV === 'production';
+const dbPath = process.env.SQLITE_DB_PATH
+    ? path.resolve(process.env.SQLITE_DB_PATH)
+    : (isProd
+        ? '/home/site/database.sqlite'
+        : path.resolve(__dirname, 'database.sqlite'));
+
+console.log(`[DB] Using database at: ${dbPath}`);
 
 let dbPromise = null;
 
@@ -12,55 +22,61 @@ async function getDb() {
             filename: dbPath,
             driver: sqlite3.Database
         }).then(db => {
-            console.log('Connected to the SQLite database.');
-            // Enable foreign keys
+            console.log('[DB] Connected to SQLite database.');
             db.run('PRAGMA foreign_keys = ON');
+            db.run('PRAGMA journal_mode = WAL'); // Better concurrent read performance
             return db;
         }).catch(err => {
-            console.error('Error opening database:', err.message);
+            console.error('[DB] FATAL: Cannot open SQLite database:', err.message);
+            dbPromise = null; // Allow retry on next request
             throw err;
         });
     }
     return dbPromise;
 }
 
-// Polyfill for mysql2/promise syntax used in routes
+// ─── MySQL2-compatible pool polyfill ─────────────────────────────────────────
+// All routes use db.query(sql, params) expecting [rows/result, fields] tuples.
 const pool = {
-    getConnection: async () => {
-        const db = await getDb();
-        return {
-            query: async (sql, params) => pool.query(sql, params),
-            execute: async (sql, params) => pool.execute(sql, params),
-            release: () => { } // No-op for SQLite
-        };
-    },
     query: async (sql, params) => {
         const db = await getDb();
-        // Translate MySQL syntax placeholders (?) to SQLite (?) - they are the same!
 
-        const isSelect = sql.trim().toUpperCase().startsWith('SELECT');
-        const isShow = sql.trim().toUpperCase().startsWith('SHOW');
+        const trimmed = sql.trim().toUpperCase();
 
-        if (isShow) {
-            // Mock SHOW DATABASES / SHOW TABLES if someone calls it
+        if (trimmed.startsWith('SHOW')) {
             return [[], []];
         }
 
-        if (isSelect) {
+        if (trimmed.startsWith('SELECT') || trimmed.startsWith('PRAGMA')) {
             const rows = await db.all(sql, params);
-            return [rows, []]; // [rows, fields]
+            return [rows, []];
         } else {
             const result = await db.run(sql, params);
-            return [{ insertId: result.lastID, affectedRows: result.changes }, []]; // [{ insertId, affectedRows }, fields]
+            return [
+                { insertId: result.lastID, affectedRows: result.changes },
+                []
+            ];
         }
     },
+
     execute: async function (sql, params) {
         return this.query(sql, params);
     },
+
+    getConnection: async () => {
+        const db = await getDb();
+        return {
+            query:   async (sql, params) => pool.query(sql, params),
+            execute: async (sql, params) => pool.execute(sql, params),
+            release: () => {} // no-op for SQLite
+        };
+    },
+
     end: async () => {
         if (dbPromise) {
             const db = await dbPromise;
             await db.close();
+            dbPromise = null;
         }
     }
 };

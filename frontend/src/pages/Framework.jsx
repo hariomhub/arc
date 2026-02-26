@@ -473,7 +473,7 @@ const PlaybooksSection = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('http://localhost:5000/api/playbooks')
+        fetch('/api/playbooks')
             .then(r => r.json())
             .then(data => { setPlaybooks(data); setLoading(false); })
             .catch(() => setLoading(false));
@@ -485,7 +485,7 @@ const PlaybooksSection = () => {
             return;
         }
         try {
-            const res = await fetch(`http://localhost:5000/api/playbooks/${pb.id}/download`, {
+            const res = await fetch(`/api/playbooks/${pb.id}/download`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (!res.ok) throw new Error('Download failed');

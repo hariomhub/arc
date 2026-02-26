@@ -20,7 +20,7 @@ const AdminDashboard = () => {
 
     // Admin Auth Guard — wait for auth to finish loading before redirecting
     useEffect(() => {
-        if (loading) return; // Don't redirect while still verifying token
+        if (loading) return;
         if (!token || !isAdmin) {
             navigate('/membership', { state: { mode: 'login' } });
         } else {
@@ -30,26 +30,28 @@ const AdminDashboard = () => {
 
     const fetchData = async () => {
         try {
-            // Fetch users for approvals
-            const uRes = await authFetch(`${API}/users`).catch(() => null);
+            // Fetch ALL users from admin endpoint, then filter pending locally
+            // Backend uses /admin/users — there is no separate pending endpoint
+            const uRes = await authFetch(`${API}/admin/users`).catch(() => null);
             if (uRes && uRes.ok) {
                 const uData = await uRes.json();
-                setPendingUsers(uData.filter(u => u.approval_status === 'pending' || u.status === 'pending' || !u.is_approved));
+                // Show users that are pending approval (not yet approved)
+                setPendingUsers(uData.filter(u => u.approval_status === 'pending' || !u.is_approved));
             }
 
             // Fetch pending resources
             const prRes = await authFetch(`${API}/resources/pending`).catch(() => null);
             if (prRes && prRes.ok) setPendingResources(await prRes.json());
 
-            // Fetch events
+            // Fetch events (public endpoint)
             const eRes = await fetch(`${API}/events`).catch(() => null);
             if (eRes && eRes.ok) setEvents(await eRes.json());
 
-            // Fetch team
+            // Fetch team (public endpoint)
             const tRes = await fetch(`${API}/team`).catch(() => null);
             if (tRes && tRes.ok) setTeam(await tRes.json());
 
-            // Fetch playbooks
+            // Fetch playbooks (public endpoint)
             const pbRes = await fetch(`${API}/playbooks`).catch(() => null);
             if (pbRes && pbRes.ok) setPlaybooks(await pbRes.json());
 
@@ -58,21 +60,23 @@ const AdminDashboard = () => {
         }
     };
 
+    // Approval: promote user to 'member' role
     const handleApprove = async (userId) => {
         try {
-            await authFetch(`${API}/users/${userId}/approval_status`, {
+            await authFetch(`${API}/admin/users/${userId}/role`, {
                 method: 'PATCH',
-                body: JSON.stringify({ status: 'approved' })
+                body: JSON.stringify({ role: 'member' })
             }).catch(() => null);
             fetchData();
         } catch (err) { console.error(err); }
     };
 
+    // Rejection: ban the user
     const handleReject = async (userId) => {
         try {
-            await authFetch(`${API}/users/${userId}/approval_status`, {
+            await authFetch(`${API}/admin/users/${userId}/ban`, {
                 method: 'PATCH',
-                body: JSON.stringify({ status: 'rejected' })
+                body: JSON.stringify({ is_banned: true })
             }).catch(() => null);
             fetchData();
         } catch (err) { console.error(err); }
@@ -124,9 +128,9 @@ const AdminDashboard = () => {
         if (newTeam.image) formData.append('image', newTeam.image);
 
         try {
-            await fetch(`${API}/team`, {
+            // Use authFetch — it now correctly skips Content-Type for FormData
+            await authFetch(`${API}/team`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }, // FormData, so no Content-Type
                 body: formData
             });
             setNewTeam({ name: '', role: '', description: '', linkedin_url: '', image: null, categories: ['leadership'] });
@@ -151,9 +155,9 @@ const AdminDashboard = () => {
         formData.append('category', newPlaybook.category);
         formData.append('file', newPlaybook.file);
         try {
-            await fetch(`${API}/playbooks`, {
+            // Use authFetch — it now correctly skips Content-Type for FormData
+            await authFetch(`${API}/playbooks`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
                 body: formData
             });
             setNewPlaybook({ title: '', brief: '', framework: 'EU AI Act', category: 'Guide', file: null });

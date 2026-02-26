@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { MessageSquare, PlusCircle, CheckCircle, User, AlertCircle, Loader, Search, X } from 'lucide-react';
 import Section from '../components/Section';
 
-const API = 'http://localhost:5000/api';
+const API = '/api';
 
 // Common English stopwords to strip before keyword matching
 const STOPWORDS = new Set(['how', 'to', 'a', 'the', 'my', 'i', 'is', 'in', 'and', 'or', 'for', 'of', 'do', 'does', 'can', 'this', 'that', 'what', 'why', 'when', 'where', 'which', 'should', 'would', 'could', 'will', 'be', 'have', 'has', 'are', 'was', 'were', 'an', 'it', 'its', 'about', 'with', 'from', 'by', 'at', 'on', 'as']);

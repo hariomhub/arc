@@ -4,6 +4,7 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import UserManagement from './pages/UserManagement';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminPanel from './pages/AdminPanel';
 // Pages
 import Home from './pages/Home';
 import About from './pages/About';
@@ -46,8 +47,11 @@ function App() {
           <Route path="/certifications" element={<Certifications />} />
           <Route path="/membership" element={<Membership />} />
           <Route path="/contact" element={<Contact />} />
+          {/* Admin routes */}
           <Route path="/admin/users" element={<UserManagement />} />
+          <Route path="/admin/panel" element={<AdminPanel />} />
           <Route path="/admin" element={<AdminDashboard />} />
+          {/* Other routes */}
           <Route path="/community" element={<CommunityQnA />} />
           <Route path="/events" element={<Events />} />
           <Route path="/profile" element={<Profile />} />
